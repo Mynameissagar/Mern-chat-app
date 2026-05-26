@@ -2,10 +2,10 @@ const { verifyToken } = require("../utils/jwt");
 const User = require("../models/User");
 const Message = require("../models/Message");
 const {
-  addOnlineUser,
-  removeOnlineUser,
-  getOnlineUsers,
-} = require("./presence");
+  setUserOnline,
+  setUserOffline,
+  getOnlineCount,
+} = require("../config/redis");
 
 const initSocket = (io) => {
 
@@ -37,7 +37,8 @@ const initSocket = (io) => {
     console.log(`✅ Socket connected: ${user.name} (${socket.id})`);
 
     // Add user to online list
-    addOnlineUser(user._id, socket.id);
+    await setUserOnline(user._id);
+    const onlineCount = await getOnlineCount();
 
     // Update user status in DB
     await User.findByIdAndUpdate(user._id, { status: "online" });
@@ -50,7 +51,7 @@ const initSocket = (io) => {
     });
 
     // Send the list of online users to the newly connected user
-    socket.emit("online_users", getOnlineUsers());
+    socket.emit("online_count", onlineCount);
 
     // ── Event: Join a channel room ──────────────────────
     socket.on("join_channel", ({ channelId }) => {
@@ -112,13 +113,54 @@ const initSocket = (io) => {
         isTyping: false,
       });
     });
+    // ── Event: Message edited ────────────────────────────
+socket.on("message_edited", ({ messageId, channelId, newContent }) => {
+  // Broadcast to everyone in channel that message was edited
+  io.to(channelId).emit("message_updated", {
+    messageId,
+    content: newContent,
+    edited: true,
+  });
+});
+
+// ── Event: Message deleted ───────────────────────────
+socket.on("message_deleted", ({ messageId, channelId }) => {
+  // Broadcast to everyone in channel that message was deleted
+  io.to(channelId).emit("message_removed", { messageId });
+});
+
+// ── Event: File message sent ─────────────────────────
+// When user uploads a file and sends it as message
+socket.on("send_file_message", async ({ channelId, fileUrl, fileName, fileSize, fileType }) => {
+  try {
+    const messageType = fileType && fileType.startsWith("image/") ? "image" : "file";
+
+    const message = await Message.create({
+      channel: channelId,
+      sender: user._id,
+      content: fileName || "Shared a file",
+      type: messageType,
+      fileUrl,
+      fileName,
+      fileSize,
+    });
+
+    const populated = await Message.findById(message._id)
+      .populate("sender", "name avatar status");
+
+    io.to(channelId).emit("receive_message", populated);
+  } catch (error) {
+    console.error("File message error:", error.message);
+    socket.emit("message_error", { error: "Failed to send file message" });
+  }
+});
 
     // ── Event: Disconnect ───────────────────────────────
     socket.on("disconnect", async () => {
       console.log(`❌ Socket disconnected: ${user.name}`);
 
       // Remove from online list
-      removeOnlineUser(user._id);
+      await setUserOffline(user._id);
 
       // Update status in DB
       await User.findByIdAndUpdate(user._id, {

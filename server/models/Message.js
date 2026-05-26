@@ -2,49 +2,63 @@ const mongoose = require("mongoose");
 
 const messageSchema = new mongoose.Schema(
   {
-    // Which channel this message belongs to
     channel: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Channel",
       required: true,
     },
-    // Who sent this message
     sender: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
       required: true,
     },
-    // The actual message text
     content: {
       type: String,
       required: [true, "Message content is required"],
       trim: true,
       maxlength: [2000, "Message cannot exceed 2000 characters"],
     },
-    // Type of message
     type: {
       type: String,
       enum: ["text", "image", "file"],
       default: "text",
     },
-    // For file/image messages (Sprint 3)
-    fileUrl: {
-      type: String,
-      default: "",
-    },
-    // For thread replies (Sprint 3)
+
+    // ── Sprint 3: File upload fields ─────────────────────
+    fileUrl: { type: String, default: "" },
+    fileName: { type: String, default: "" },
+    fileSize: { type: Number, default: 0 },
+
+    // ── Sprint 3: Thread reply support ───────────────────
+    // If this message is a reply, threadParent points to parent message
     threadParent: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Message",
       default: null,
     },
-    // Soft delete — message marked deleted but kept in DB
-    deleted: {
-      type: Boolean,
-      default: false,
-    },
+
+    // ── Sprint 3: Emoji reactions ─────────────────────────
+    // Array of { emoji: "👍", users: [userId1, userId2] }
+    reactions: [
+      {
+        emoji: { type: String, required: true },
+        users: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }],
+      },
+    ],
+
+    // ── Sprint 3: Edit tracking ───────────────────────────
+    edited: { type: Boolean, default: false },
+    editedAt: { type: Date, default: null },
+
+    // ── Sprint 3: @Mention tracking ───────────────────────
+    // Stores IDs of users mentioned with @username
+    mentions: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }],
+
+    // Soft delete
+    deleted: { type: Boolean, default: false },
   },
   { timestamps: true }
 );
+messageSchema.index({ content: "text" });
 
 module.exports = mongoose.model("Message", messageSchema);

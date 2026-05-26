@@ -37,6 +37,10 @@ app.use("/api/auth", require("./routes/auth"));
 app.use("/api/users", require("./routes/users"));
 app.use("/api/channels", require("./routes/channels")); // ← NEW
 app.use("/api/messages", require("./routes/messages")); // ← NEW
+app.use("/api/upload", require("./routes/upload"));
+app.use("/api/workspaces", require("./routes/workspaces")); // ← NEW
+app.use("/api/search",     require("./routes/search"));     // ← NEW
+app.use("/api/admin",      require("./routes/admin"));      // ← NEW
 
 // ── Health check ──────────────────────────────────────────
 app.get("/", (req, res) => {
