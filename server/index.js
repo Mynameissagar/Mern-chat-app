@@ -15,7 +15,10 @@ const server = http.createServer(app);
 // ── NEW: Create Socket.io server ─────────────────────────
 const io = new Server(server, {
   cors: {
-    origin: process.env.CLIENT_URL || "http://localhost:5173",
+    origin: [
+      "http://localhost:5173",
+      process.env.CLIENT_URL,
+    ].filter(Boolean),
     methods: ["GET", "POST"],
     credentials: true,
   },
@@ -26,7 +29,10 @@ initSocket(io);
 
 // ── Middleware ────────────────────────────────────────────
 app.use(cors({
-  origin: process.env.CLIENT_URL || "http://localhost:5173",
+  origin: [
+    "http://localhost:5173",           // Local development
+    process.env.CLIENT_URL,            // Production frontend URL
+  ].filter(Boolean),
   credentials: true,
 }));
 app.use(express.json());
