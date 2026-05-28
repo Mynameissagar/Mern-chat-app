@@ -1,3 +1,4 @@
+const CallLog = require("../models/CallLog");
 const { verifyToken } = require("../utils/jwt");
 const User = require("../models/User");
 const Message = require("../models/Message");
@@ -152,6 +153,120 @@ socket.on("send_file_message", async ({ channelId, fileUrl, fileName, fileSize, 
   } catch (error) {
     console.error("File message error:", error.message);
     socket.emit("message_error", { error: "Failed to send file message" });
+  }
+});
+// ═══════════════════════════════════════════════════
+// VIDEO CALL SIGNALING EVENTS
+// These events pass WebRTC data between 2 users
+// Server just forwards — does NOT process video data
+// ═══════════════════════════════════════════════════
+
+// ── Event: Initiate a call ─────────────────────────
+socket.on("call_user", async ({ targetUserId, offer, callType, channelId }) => {
+  try {
+    // Create call log record in MongoDB
+    const callLog = await CallLog.create({
+      caller: user._id,
+      receiver: targetUserId,
+      channel: channelId,
+      type: callType || "video",
+      status: "initiated",
+    });
+
+    // Forward incoming call notification to target user
+    // We emit to the specific socket of target user
+    io.to(targetUserId).emit("incoming_call", {
+      callId: callLog._id,
+      from: {
+        _id: user._id,
+        name: user.name,
+        avatar: user.avatar,
+      },
+      offer,       // WebRTC offer (connection proposal)
+      callType,
+      channelId,
+    });
+
+    // Confirm to caller that call was sent
+    socket.emit("call_initiated", {
+      callId: callLog._id,
+      targetUserId,
+    });
+
+    console.log(`📹 Call from ${user.name} to user ${targetUserId}`);
+  } catch (error) {
+    console.error("call_user error:", error.message);
+  }
+});
+
+// ── Event: Accept call ─────────────────────────────
+socket.on("call_accepted", async ({ callId, answer, targetUserId }) => {
+  try {
+    // Update call log status
+    await CallLog.findByIdAndUpdate(callId, {
+      status: "accepted",
+      startedAt: new Date(),
+    });
+
+    // Send WebRTC answer back to the caller
+    io.to(targetUserId).emit("call_answered", {
+      callId,
+      answer,  // WebRTC answer (acceptance)
+    });
+
+    console.log(`✅ Call ${callId} accepted`);
+  } catch (error) {
+    console.error("call_accepted error:", error.message);
+  }
+});
+
+// ── Event: Reject call ─────────────────────────────
+socket.on("call_rejected", async ({ callId, targetUserId }) => {
+  try {
+    await CallLog.findByIdAndUpdate(callId, { status: "rejected" });
+
+    // Notify caller that call was rejected
+    io.to(targetUserId).emit("call_rejected", { callId });
+
+    console.log(`❌ Call ${callId} rejected`);
+  } catch (error) {
+    console.error("call_rejected error:", error.message);
+  }
+});
+
+// ── Event: ICE Candidate exchange ──────────────────
+// ICE candidates = network routing information
+// Must be exchanged for WebRTC connection to work
+socket.on("ice_candidate", ({ targetUserId, candidate }) => {
+  // Forward ICE candidate to other peer
+  io.to(targetUserId).emit("ice_candidate", {
+    candidate,
+    from: user._id,
+  });
+});
+
+// ── Event: End call ────────────────────────────────
+socket.on("call_ended", async ({ callId, targetUserId }) => {
+  try {
+    // Find call log and calculate duration
+    const callLog = await CallLog.findById(callId);
+    if (callLog && callLog.startedAt) {
+      const duration = Math.floor(
+        (new Date() - callLog.startedAt) / 1000
+      );
+      await CallLog.findByIdAndUpdate(callId, {
+        status: "ended",
+        endedAt: new Date(),
+        duration,
+      });
+    }
+
+    // Notify other user that call ended
+    io.to(targetUserId).emit("call_ended", { callId });
+
+    console.log(`📴 Call ${callId} ended`);
+  } catch (error) {
+    console.error("call_ended error:", error.message);
   }
 });
 

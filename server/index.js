@@ -41,6 +41,8 @@ app.use("/api/upload", require("./routes/upload"));
 app.use("/api/workspaces", require("./routes/workspaces")); // ← NEW
 app.use("/api/search",     require("./routes/search"));     // ← NEW
 app.use("/api/admin",      require("./routes/admin"));      // ← NEW
+app.use("/api/ai",    require("./routes/ai"));    // ← NEW
+app.use("/api/calls", require("./routes/calls")); // ← NEW
 
 // ── Health check ──────────────────────────────────────────
 app.get("/", (req, res) => {
